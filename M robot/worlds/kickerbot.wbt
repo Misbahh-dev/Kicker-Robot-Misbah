@@ -1,0 +1,153 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/samples/contests/robocup/protos/RobocupSoccerField.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation 0.045369937394593926 -0.02420123848711409 -0.998677059332245 4.120481091346178
+  position 1.0893045904324343 -0.671283095833763 0.17647490168882868
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RobocupSoccerField {
+}
+Robot {
+  translation 0.26376459254350987 8.701615817849093e-07 -0.00823146811732968
+  rotation 0.018747166685980674 0.018762389338867317 0.9996481963608722 1.5711554439337418
+  children [
+    DEF right_eye Solid {
+      children [
+        Pose {
+          translation -0.018 -0.045 0.09
+          children [
+            Shape {
+              appearance PBRAppearance {
+                baseColor 0.333333 1 1
+              }
+              geometry Box {
+                size 0.01 0.01 0.01
+              }
+            }
+          ]
+        }
+      ]
+    }
+    DEF left_eye Solid {
+      children [
+        Pose {
+          translation 0.018 -0.045 0.09
+          children [
+            Shape {
+              appearance PBRAppearance {
+                baseColor 0.333333 1 1
+              }
+              geometry Box {
+                size 0.01 0.01 0.01
+              }
+            }
+          ]
+        }
+      ]
+      name "solid(1)"
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        position 9.01716151052021
+        anchor 0.045 0 0.048
+      }
+      device [
+        RotationalMotor {
+          name "left_motor"
+        }
+      ]
+      endPoint Solid {
+        translation 1.4095994532031808e-07 0.01902703644515842 0.09209135809548323
+        rotation 0.9999999999998215 -4.738471312932227e-07 -3.6370075477566326e-07 2.7339761750257345
+        children [
+          DEF wheel Pose {
+            translation 0.044992 0 0.048
+            rotation 0 1 0 1.57
+            children [
+              Shape {
+                appearance PBRAppearance {
+                  roughness 1
+                  metalness 0.3
+                }
+                geometry Cylinder {
+                  height 0.01
+                  radius 0.03
+                }
+              }
+            ]
+          }
+        ]
+        name "Wheel 1"
+        boundingObject USE wheel
+        physics Physics {
+        }
+      }
+    }
+    HingeJoint {
+      jointParameters HingeJointParameters {
+        position 9.017161521291694
+        anchor -0.045 0 0.048
+      }
+      device [
+        RotationalMotor {
+          name "right_motor"
+        }
+      ]
+      endPoint Solid {
+        translation 5.1877687257118055e-08 0.019026440964237605 0.09208936956441546
+        rotation 0.9999999999998576 -4.790557615174241e-07 -2.3513132500542393e-07 2.733976214111455
+        children [
+          DEF wheel Pose {
+            translation -0.044992 0 0.048
+            rotation 0 1 0 1.57
+            children [
+              Shape {
+                appearance PBRAppearance {
+                  roughness 1
+                  metalness 0.3
+                }
+                geometry Cylinder {
+                  height 0.01
+                  radius 0.03
+                }
+              }
+            ]
+          }
+        ]
+        name "Wheel 2"
+        boundingObject USE wheel
+        physics Physics {
+        }
+      }
+    }
+    DEF bot_body Pose {
+      translation 0 0 0.06
+      children [
+        Shape {
+          appearance PBRAppearance {
+            baseColor 0.666667 0 1
+            roughness 1
+            metalness 0.3
+          }
+          geometry Cylinder {
+            height 0.08
+            radius 0.047
+          }
+        }
+      ]
+    }
+  ]
+  boundingObject USE bot_body
+  physics Physics {
+  }
+  controller "kicking_controller"
+}
