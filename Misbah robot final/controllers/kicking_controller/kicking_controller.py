@@ -1,7 +1,8 @@
-
 from controller import Robot, Motion
 
 class NaoGoalTracker(Robot):
+    S_SEARCH_BALL = 'SEARCH_BALL'
+
     def __init__(self):
         super().__init__()
         self.timeStep = int(self.getBasicTimeStep())
@@ -19,7 +20,8 @@ class NaoGoalTracker(Robot):
         self.currently_playing = None
         self.cooldown = 0
 
-        print('[NaoGoalTracker] Motions loaded')
+        self.state = self.S_SEARCH_BALL
+        print('[NaoGoalTracker] State: SEARCH_BALL')
 
     def _play_motion(self, motion, cooldown=67):
         if self.currently_playing and not self.currently_playing.isOver():
@@ -31,11 +33,16 @@ class NaoGoalTracker(Robot):
     def _is_busy(self):
         return self.cooldown > 0 or (self.currently_playing and not self.currently_playing.isOver())
 
+    def _state_search_ball(self):
+        print('[NaoGoalTracker] Waiting for ball ...')
+
     def run(self):
         while self.step(self.timeStep) != -1:
             if self.cooldown > 0:
                 self.cooldown -= 1
-            
+
+            if self.state == self.S_SEARCH_BALL:
+                self._state_search_ball()
 
 robot = NaoGoalTracker()
 robot.run()
