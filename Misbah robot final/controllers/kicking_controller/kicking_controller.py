@@ -1,13 +1,14 @@
 """
 Robot Kicker – APPROACH_BALL walks toward ball using area threshold
 Includes goal post detection (top camera) for logging
+Now with REAL KICK motion!
 """
 import cv2
 import numpy as np
 from collections import deque
 from controller import Robot, Motion
 
-# Colour thresholds
+# Colour thresholds 
 BALL_WHITE_LOWER = np.array([0,   0, 180], dtype=np.uint8)
 BALL_WHITE_UPPER = np.array([180, 50, 255], dtype=np.uint8)
 BALL_BLACK_LOWER = np.array([0,   0,   0], dtype=np.uint8)
@@ -96,7 +97,8 @@ class NaoGoalTracker(Robot):
     S_SEARCH_BALL   = 'SEARCH_BALL'
     S_ALIGN_BALL    = 'ALIGN_BALL'
     S_APPROACH_BALL = 'APPROACH_BALL'
-    S_KICK          = 'KICK'  
+    S_KICK          = 'KICK'
+    S_DONE          = 'DONE'  
 
     def __init__(self):
         super().__init__()
@@ -142,6 +144,7 @@ class NaoGoalTracker(Robot):
         self.cooldown = cooldown
 
     def _stop_motion(self):
+        """Stops whatever is currently playing and clears the cooldown immediately."""
         if self.currently_playing and not self.currently_playing.isOver():
             self.currently_playing.stop()
         self.cooldown = 0
@@ -195,15 +198,20 @@ class NaoGoalTracker(Robot):
         self._play_motion(self.mot_forwards)
 
     def _state_kick(self):
-        print('[NaoGoalTracker] KICK! (placeholder)')
-        
+        """Fires the shoot motion as soon as the robot is free to move.
+        After this the state flips to DONE and the controller idles."""
+        if self._is_busy():
+            return
+        print('[NaoGoalTracker] >>> KICK! <<<')
+        self._play_motion(self.mot_kick, cooldown=120)
+        self.state = self.S_DONE
 
     def run(self):
         while self.step(self.timeStep) != -1:
             if self.cooldown > 0:
                 self.cooldown -= 1
 
-            # Top camera: goal post detection (logging only)
+            #  Top camera: goal post detection
             top_raw = self.cameraTop.getImage()
             goal_detected, goal_cx = detect_goal_post(top_raw, self.cam_w_top, self.cam_h_top)
             if goal_detected and self.goal_log_countdown <= 0:
@@ -211,8 +219,8 @@ class NaoGoalTracker(Robot):
                 self.goal_log_countdown = GOAL_LOG_INTERVAL
             if self.goal_log_countdown > 0:
                 self.goal_log_countdown -= 1
-
-            #  Bottom camera: ball detection
+                
+            # Bottom camera: ball detection 
             bot_raw = self.cameraBottom.getImage()
             ball_detected, ball_cx, ball_area = detect_ball(bot_raw, self.cam_w_bot, self.cam_h_bot)
             
@@ -233,6 +241,9 @@ class NaoGoalTracker(Robot):
                 self._state_approach_ball(ball_detected, smoothed_area)
             elif self.state == self.S_KICK:
                 self._state_kick()
+            elif self.state == self.S_DONE:
+                # Idle 
+                pass
 
 
 robot = NaoGoalTracker()
