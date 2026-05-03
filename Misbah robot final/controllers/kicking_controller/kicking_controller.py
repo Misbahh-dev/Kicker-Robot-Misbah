@@ -1,39 +1,85 @@
 """
 Robot Kicker – APPROACH_BALL walks toward ball using area threshold
+Includes goal post detection (top camera) for logging
 """
 import cv2
 import numpy as np
 from collections import deque
 from controller import Robot, Motion
 
-# Colour thresholds (unchanged)
+# Colour thresholds
 BALL_WHITE_LOWER = np.array([0,   0, 180], dtype=np.uint8)
 BALL_WHITE_UPPER = np.array([180, 50, 255], dtype=np.uint8)
 BALL_BLACK_LOWER = np.array([0,   0,   0], dtype=np.uint8)
 BALL_BLACK_UPPER = np.array([180, 80,  55], dtype=np.uint8)
 GRASS_LOWER      = np.array([35,  60,  60], dtype=np.uint8)
 GRASS_UPPER      = np.array([85, 255, 255], dtype=np.uint8)
+
+# Goal post thresholds
+GOAL_WHITE_LOWER = np.array([0,   0, 200], dtype=np.uint8)
+GOAL_WHITE_UPPER = np.array([180, 40, 255], dtype=np.uint8)
+GOAL_GREY_LOWER  = np.array([0,   0,  70], dtype=np.uint8)
+GOAL_GREY_UPPER  = np.array([180, 50, 185], dtype=np.uint8)
+
 MIN_BALL_AREA = 400
+MIN_GOAL_AREA = 800
 BALL_CENTRE_MIN = 0.48
 BALL_CENTRE_MAX = 0.502
 BALL_CENTRE_MID = (BALL_CENTRE_MIN + BALL_CENTRE_MAX) / 2.0
 BALL_CLOSE_AREA = 1950
 AREA_SMOOTH_WINDOW = 10
+GOAL_LOG_INTERVAL = 62
+
+
+def detect_goal_post(image_data, width, height):
+    """Detect goal post from top camera"""
+    frame = np.frombuffer(image_data, dtype=np.uint8).reshape((height, width, 4))
+    bgr = frame[:, :, :3].copy()
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    
+    white_mask = cv2.inRange(hsv, GOAL_WHITE_LOWER, GOAL_WHITE_UPPER)
+    grey_mask  = cv2.inRange(hsv, GOAL_GREY_LOWER, GOAL_GREY_UPPER)
+    grey_mask = cv2.bitwise_and(grey_mask, cv2.bitwise_not(white_mask))
+    
+    k_large = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 25))
+    dilated_white = cv2.dilate(white_mask, k_large, iterations=2)
+    goal_mask = cv2.bitwise_or(white_mask, cv2.bitwise_and(dilated_white, grey_mask))
+    
+    goal_mask = cv2.morphologyEx(goal_mask, cv2.MORPH_CLOSE,
+                                  cv2.getStructuringElement(cv2.MORPH_RECT, (11, 11)))
+    goal_mask = cv2.morphologyEx(goal_mask, cv2.MORPH_OPEN,
+                                  cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5)))
+    
+    contours, _ = cv2.findContours(goal_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    valid = [c for c in contours if cv2.contourArea(c) >= MIN_GOAL_AREA]
+    detected = len(valid) > 0
+    cx_norm = 0.5
+    if detected:
+        pts = np.vstack(valid)
+        x, y, w, h = cv2.boundingRect(pts)
+        cx_norm = (x + w/2.0) / width
+    return detected, cx_norm
+
 
 def detect_ball(image_data, width, height):
+    """Detect football from bottom camera"""
     frame = np.frombuffer(image_data, dtype=np.uint8).reshape((height, width, 4))
     bgr   = frame[:, :, :3].copy()
     hsv   = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    
     not_grass = cv2.bitwise_not(cv2.inRange(hsv, GRASS_LOWER, GRASS_UPPER))
     white_mask = cv2.bitwise_and(cv2.inRange(hsv, BALL_WHITE_LOWER, BALL_WHITE_UPPER), not_grass)
     black_mask = cv2.bitwise_and(cv2.inRange(hsv, BALL_BLACK_LOWER, BALL_BLACK_UPPER), not_grass)
+    
     k_expand = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
     dilated_w = cv2.dilate(white_mask, k_expand, iterations=2)
     ball_mask = cv2.bitwise_or(white_mask, cv2.bitwise_and(dilated_w, black_mask))
+    
     ball_mask = cv2.morphologyEx(ball_mask, cv2.MORPH_CLOSE,
                                   cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15)))
     ball_mask = cv2.morphologyEx(ball_mask, cv2.MORPH_OPEN,
                                   cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+    
     contours, _ = cv2.findContours(ball_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     best_area = 0
     best_cx = 0.5
@@ -45,31 +91,48 @@ def detect_ball(image_data, width, height):
             best_cx = (x + w/2.0) / width
     return best_area > 0, best_cx, best_area
 
+
 class NaoGoalTracker(Robot):
     S_SEARCH_BALL   = 'SEARCH_BALL'
     S_ALIGN_BALL    = 'ALIGN_BALL'
     S_APPROACH_BALL = 'APPROACH_BALL'
+    S_KICK          = 'KICK'  
 
     def __init__(self):
         super().__init__()
         self.timeStep = int(self.getBasicTimeStep())
+        
+        # Cameras
         self.cameraTop = self.getDevice('CameraTop')
         self.cameraBottom = self.getDevice('CameraBottom')
         self.cameraTop.enable(4 * self.timeStep)
         self.cameraBottom.enable(4 * self.timeStep)
-
+        
+        # Camera dimensions
+        self.cam_w_top = self.cameraTop.getWidth()
+        self.cam_h_top = self.cameraTop.getHeight()
+        self.cam_w_bot = self.cameraBottom.getWidth()
+        self.cam_h_bot = self.cameraBottom.getHeight()
+        
+        # Motions
         self.mot_forwards   = Motion('../../motions/Forwards.motion')
         self.mot_side_left  = Motion('../../motions/SideStepLeft.motion')
         self.mot_side_right = Motion('../../motions/SideStepRight.motion')
         self.mot_kick       = Motion('../../motions/shoot.motion')
-
+        
+        # State
         self.currently_playing = None
         self.cooldown = 0
         self.state = self.S_SEARCH_BALL
-        self.cam_w_bot = self.cameraBottom.getWidth()
-        self.cam_h_bot = self.cameraBottom.getHeight()
+        
+        # Ball tracking
         self.last_ball_cx = 0.5
         self.ball_area_history = deque(maxlen=AREA_SMOOTH_WINDOW)
+        
+        # Goal logging
+        self.goal_log_countdown = 0
+        
+        print('[NaoGoalTracker] Ready')
 
     def _play_motion(self, motion, cooldown=67):
         if self.currently_playing and not self.currently_playing.isOver():
@@ -78,13 +141,17 @@ class NaoGoalTracker(Robot):
         self.currently_playing = motion
         self.cooldown = cooldown
 
+    def _stop_motion(self):
+        if self.currently_playing and not self.currently_playing.isOver():
+            self.currently_playing.stop()
+        self.cooldown = 0
+
     def _is_busy(self):
         return self.cooldown > 0 or (self.currently_playing and not self.currently_playing.isOver())
 
     def _clear_ball_history(self):
         self.ball_area_history.clear()
 
-    # SEARCH_BALL same as before
     def _state_search_ball(self, ball_detected):
         if ball_detected:
             print('[NaoGoalTracker] Ball found -> ALIGN_BALL')
@@ -105,8 +172,10 @@ class NaoGoalTracker(Robot):
             return
         error = ball_cx - BALL_CENTRE_MID
         if error > 0:
+            print(f'[NaoGoalTracker] Sidestep right (cx={ball_cx:.3f})')
             self._play_motion(self.mot_side_right)
         else:
+            print(f'[NaoGoalTracker] Sidestep left (cx={ball_cx:.3f})')
             self._play_motion(self.mot_side_left)
 
     def _state_approach_ball(self, ball_detected, ball_area):
@@ -118,32 +187,44 @@ class NaoGoalTracker(Robot):
             print(f'[NaoGoalTracker] Ball close (area={int(ball_area)}) -> KICK')
             self._stop_motion()
             self._clear_ball_history()
-            self.state = self.S_KICK  # will be defined later
+            self.state = self.S_KICK
             return
         if self._is_busy():
             return
         print(f'[NaoGoalTracker] Walking to ball (area={int(ball_area)})')
         self._play_motion(self.mot_forwards)
 
-    # Placeholder kick state (no actual kick yet)
     def _state_kick(self):
         print('[NaoGoalTracker] KICK! (placeholder)')
-        # In next commit we will add real kick
+        
 
     def run(self):
         while self.step(self.timeStep) != -1:
             if self.cooldown > 0:
                 self.cooldown -= 1
 
+            # Top camera: goal post detection (logging only)
+            top_raw = self.cameraTop.getImage()
+            goal_detected, goal_cx = detect_goal_post(top_raw, self.cam_w_top, self.cam_h_top)
+            if goal_detected and self.goal_log_countdown <= 0:
+                print(f'[NaoGoalTracker] Goal post visible: cx={goal_cx:.2f}')
+                self.goal_log_countdown = GOAL_LOG_INTERVAL
+            if self.goal_log_countdown > 0:
+                self.goal_log_countdown -= 1
+
+            #  Bottom camera: ball detection
             bot_raw = self.cameraBottom.getImage()
             ball_detected, ball_cx, ball_area = detect_ball(bot_raw, self.cam_w_bot, self.cam_h_bot)
+            
             if ball_detected:
                 self.last_ball_cx = ball_cx
                 self.ball_area_history.append(ball_area)
             ball_cx = self.last_ball_cx
+            
             smoothed_area = (sum(self.ball_area_history) / len(self.ball_area_history)
                              if self.ball_area_history else 0.0)
 
+            # State machine 
             if self.state == self.S_SEARCH_BALL:
                 self._state_search_ball(ball_detected)
             elif self.state == self.S_ALIGN_BALL:
@@ -152,6 +233,7 @@ class NaoGoalTracker(Robot):
                 self._state_approach_ball(ball_detected, smoothed_area)
             elif self.state == self.S_KICK:
                 self._state_kick()
+
 
 robot = NaoGoalTracker()
 robot.run()
