@@ -1,0 +1,33 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/samples/contests/robocup/protos/RobocupSoccerField.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/softbank/nao/protos/Nao.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/balls/protos/FifaSoccerBall.proto"
+
+WorldInfo {
+}
+Viewpoint {
+  orientation 0.05448393902180541 -0.8277396289291232 -0.5584609270924381 6.048487564316795
+  position -6.707492657636523 -0.4043636871843854 2.513513169778834
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+RobocupSoccerField {
+}
+Nao {
+  translation 2.35 0 0.334
+  name "NAO_bot_misbah"
+  version "V5 (blue)"
+  customColor [
+    0.666667 0.333333 1
+  ]
+  controller "kicking_controller"
+}
+FifaSoccerBall {
+  translation 3.09 0 0.1
+  size 2
+}
